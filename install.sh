@@ -38,6 +38,7 @@ mkdir -p tools
 
 # 4. Download product package from GitHub
 echo -e "Downloading package components from GitHub..."
+rm -rf /tmp/ai-pm-operator
 git clone --depth 1 https://github.com/mohitkhandelwal242/ai-pm-operator.git /tmp/ai-pm-operator
 
 # 5. Extract files
@@ -47,6 +48,7 @@ cp -r /tmp/ai-pm-operator/tools .
 cp /tmp/ai-pm-operator/.env.example .
 cp /tmp/ai-pm-operator/team.json.template .
 cp /tmp/ai-pm-operator/README.md .
+cp /tmp/ai-pm-operator/CLAUDE.md .
 rm -rf /tmp/ai-pm-operator
 
 echo -e "${GREEN}✓ Package components extracted successfully!${NC}"
