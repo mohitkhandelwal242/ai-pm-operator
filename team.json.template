@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Jane Doe",
+    "alias": "Jane",
+    "atlassianId": "5c95d35f1b780c2c5d7c3342",
+    "email": "jane.doe@company.com",
+    "role": "Product Manager",
+    "domains": ["strategy", "growth", "metrics"],
+    "messageStyle": "concise, metric-driven"
+  },
+  {
+    "name": "John Smith",
+    "alias": "John",
+    "atlassianId": "5e968d7cb77bf40c163e0785",
+    "email": "john.smith@company.com",
+    "role": "Engineering Lead",
+    "domains": ["backend", "database", "infrastructure"],
+    "messageStyle": "technical, direct"
+  }
+]
