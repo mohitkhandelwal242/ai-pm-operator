@@ -3,6 +3,7 @@ import os
 import json
 import urllib.request
 import urllib.error
+import urllib.parse
 import base64
 
 # Colors for terminal styling
@@ -27,14 +28,36 @@ def print_error(msg):
 def print_info(msg):
     print(f"{Colors.BLUE}ℹ {msg}{Colors.END}")
 
-def validate_license(key):
-    # Online or local verification helper
-    print_info("Validating license key...")
-    if not key or len(key.strip()) < 10:
+def print_warning(msg):
+    print(f"{Colors.WARNING}⚠️ {msg}{Colors.END}")
+
+def validate_subscription(sub_id):
+    if not sub_id:
+        return True
+    
+    print_info("Validating PayPal Subscription ID with server...")
+    if not sub_id.startswith("I-") or len(sub_id.strip()) < 10:
+        print_error("Invalid PayPal subscription ID format. Should start with 'I-'.")
         return False
-    # Mocking license validation - in production, this queries dydb.in/api/validate
-    print_success("License validated successfully!")
-    return True
+        
+    try:
+        import ssl
+        url = f"https://dydb.in/verify.php?subscription_id={urllib.parse.quote(sub_id)}"
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode())
+                if data.get("valid") is True:
+                    print_success(f"Subscription is ACTIVE! Status: {data.get('status')}")
+                    return True
+                else:
+                    print_error(f"Subscription validation failed: {data.get('error', 'Not active')}")
+                    return False
+    except Exception as e:
+        print_error(f"Could not connect to subscription verification server: {str(e)}")
+        print_warning("Server offline. Continuing under 3-day local trial.")
+        return True
 
 def validate_jira(url, email, token, project_key):
     print_info("Connecting to Jira and validating credentials...")
@@ -82,13 +105,19 @@ def main():
     print(f"\n{Colors.BOLD}{Colors.BLUE}✦ Welcome to AI-PM Operator Setup Wizard ✦{Colors.END}")
     print("This wizard will configure your local environment and connect your APIs.\n")
     
-    # 1. License Check
-    print_header("Step 1: License Verification")
+    # 1. Subscription Check
+    print_header("Step 1: PayPal Subscription ID")
+    print("If you have subscribed, enter your PayPal Subscription ID (starts with 'I-').")
+    print("If you want to use the 3-day free trial, press Enter/return to skip.")
+    subscription_id = ""
     while True:
-        license_key = input("Enter your Gumroad/Lemon Squeezy license key: ").strip()
-        if validate_license(license_key):
+        subscription_id = input("\nEnter PayPal Subscription ID (or press Enter to skip): ").strip()
+        if not subscription_id:
+            print_info("Using 3-day free trial mode.")
             break
-        print_error("Invalid license key. Please check and try again.")
+        if validate_subscription(subscription_id):
+            break
+        print_error("Invalid subscription. Please check your Subscription ID and try again.")
     
     # 2. Jira Credentials
     print_header("Step 2: Connect Jira Cloud")
@@ -174,7 +203,7 @@ def main():
 # AI-PM Operator — Environment Configuration (Generated)
 # ==============================================================================
 
-OPERATOR_LICENSE_KEY={license_key}
+OPERATOR_SUBSCRIPTION_ID={subscription_id}
 
 # Jira Integration
 JIRA_URL={jira_url}

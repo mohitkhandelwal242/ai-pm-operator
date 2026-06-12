@@ -23,6 +23,7 @@ import mimetypes
 import os
 import ssl
 import sys
+import time
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -50,9 +51,9 @@ def load_env():
 
 
 def verify_license_and_trial(force_check_command=False):
-    """Enforce a local 2-run free trial, or validate the Lemon Squeezy license key online."""
+    """Enforce a local 3-day free trial, or validate the PayPal subscription ID online."""
     load_env()
-    license_key = os.environ.get("OPERATOR_LICENSE_KEY", "").strip()
+    subscription_id = os.environ.get("OPERATOR_SUBSCRIPTION_ID", "").strip()
     
     state_dir = Path(__file__).resolve().parent.parent / ".claude"
     state_file = state_dir / ".operator-state.json"
@@ -65,51 +66,80 @@ def verify_license_and_trial(force_check_command=False):
         except Exception:
             pass
             
-    run_count = state.get("run_count", 0)
+    current_time = time.time()
     license_valid = state.get("license_valid", False)
+    last_checked = state.get("last_checked", 0.0)
+    cached_key = state.get("cached_key", "")
     
-    # 1. Validated license cached local check
-    if license_key:
-        if license_valid and state.get("cached_key") == license_key:
+    # 1. PayPal Subscription validation
+    if subscription_id:
+        # Check cache if valid, not changed, and checked less than 24 hours ago
+        if license_valid and cached_key == subscription_id and (current_time - last_checked < 86400):
             return True
             
-        # Try validating online (Lemon Squeezy License Validation API)
+        # Validate online via dydb.in/verify.php
         try:
-            req = urllib.request.Request(
-                "https://api.lemonsqueezy.com/v1/licenses/validate",
-                method="POST",
-                headers={"Content-Type": "application/json", "Accept": "application/json"},
-                data=json.dumps({"license_key": license_key}).encode()
-            )
+            url = f"https://dydb.in/verify.php?subscription_id={urllib.parse.quote(subscription_id)}"
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
             ctx = ssl._create_unverified_context()
-            with urllib.request.urlopen(req, context=ctx, timeout=4) as resp:
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
                 result = json.loads(resp.read().decode())
-                # If valid or active
                 if result.get("valid") is True:
                     state["license_valid"] = True
-                    state["cached_key"] = license_key
+                    state["cached_key"] = subscription_id
+                    state["last_checked"] = current_time
                     state_file.write_text(json.dumps(state, indent=2))
                     return True
-        except Exception:
-            # Offline fallback if already previously verified
-            if license_valid and state.get("cached_key") == license_key:
+                else:
+                    # Invalidate if payment declined, cancelled, etc.
+                    state["license_valid"] = False
+                    state["cached_key"] = subscription_id
+                    state["last_checked"] = current_time
+                    state_file.write_text(json.dumps(state, indent=2))
+                    print("\n" + "="*65)
+                    print("❌ PAYPAL SUBSCRIPTION INACTIVE OR DECLINED.")
+                    print(f"Subscription ID: {subscription_id}")
+                    print("Please check your payment status or update details at https://dydb.in.")
+                    print("Run the setup wizard to update your subscription ID:")
+                    print("  python3 tools/setup-wizard.py")
+                    print("="*65 + "\n")
+                    sys.exit(1)
+        except Exception as e:
+            # Offline fallback if already previously verified (within 3 days of offline tolerance)
+            if license_valid and cached_key == subscription_id and (current_time - last_checked < 259200):
                 return True
-                
-    # 2. Free Trial gate (Max 2 free executions)
-    if not license_valid:
-        if run_count >= 2:
-            print("\n" + "="*65)
-            print("❌ TRIAL EXPIRED (2/2 free runs completed).")
-            print("Please purchase an AI-PM Operator license at https://dydb.in to unlock.")
-            print("If you already purchased a license, configure it using:")
-            print("  python3 tools/setup-wizard.py")
-            print("="*65 + "\n")
-            sys.exit(1)
-            
-        if not force_check_command:
-            state["run_count"] = run_count + 1
-            state_file.write_text(json.dumps(state, indent=2))
-            print(f"ℹ️ AI-PM Operator Trial Mode: Free Run {run_count + 1} of 2.")
+            print(f"\n⚠️ Offline connection warning: Could not verify subscription ({e}).")
+            if not license_valid:
+                # Fall through to trial check if not previously verified
+                pass
+
+    # 2. 3-day Free Trial gate
+    trial_start = state.get("trial_start_time")
+    
+    if trial_start is None:
+        trial_start = current_time
+        state["trial_start_time"] = trial_start
+        state_file.write_text(json.dumps(state, indent=2))
+        
+    elapsed = current_time - trial_start
+    trial_limit = 3 * 24 * 60 * 60 # 3 days in seconds
+    
+    if elapsed > trial_limit:
+        print("\n" + "="*65)
+        print("❌ 3-DAY FREE TRIAL EXPIRED.")
+        print("Please set up your subscription at https://dydb.in to continue.")
+        print("Once subscribed, configure your PayPal Subscription ID using:")
+        print("  python3 tools/setup-wizard.py")
+        print("="*65 + "\n")
+        sys.exit(1)
+        
+    if not force_check_command:
+        days_left = (trial_limit - elapsed) / 86400
+        if days_left > 1:
+            print(f"ℹ️ AI-PM Operator Trial: {days_left:.1f} days remaining.")
+        else:
+            hours_left = (trial_limit - elapsed) / 3600
+            print(f"ℹ️ AI-PM Operator Trial: {hours_left:.1f} hours remaining.")
             
     return True
 
