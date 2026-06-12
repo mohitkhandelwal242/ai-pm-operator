@@ -81,7 +81,7 @@ def verify_license_and_trial(force_check_command=False):
         try:
             url = f"https://dydb.in/verify.php?subscription_id={urllib.parse.quote(subscription_id)}"
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            ctx = ssl._create_unverified_context()
+            ctx = ssl.create_default_context(cafile=certifi.where()) if HAS_CERTIFI else ssl.create_default_context()
             with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
                 result = json.loads(resp.read().decode())
                 if result.get("valid") is True:

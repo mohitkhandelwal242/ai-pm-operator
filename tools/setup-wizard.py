@@ -5,6 +5,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import base64
+import getpass
 
 # Colors for terminal styling
 class Colors:
@@ -44,7 +45,7 @@ def validate_subscription(sub_id):
         import ssl
         url = f"https://dydb.in/verify.php?subscription_id={urllib.parse.quote(sub_id)}"
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        ctx = ssl._create_unverified_context()
+        ctx = ssl.create_default_context()
         with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
             if response.status == 200:
                 data = json.loads(response.read().decode())
@@ -126,7 +127,7 @@ def main():
     while True:
         jira_url = input("Jira Site URL (e.g., mycompany.atlassian.net): ").strip()
         jira_email = input("Jira User Email (e.g., pm@mycompany.com): ").strip()
-        jira_token = input("Jira API Token: ").strip()
+        jira_token = getpass.getpass("Jira API Token: ").strip()
         jira_project = input("Jira Project Key (e.g., SP): ").strip().upper()
         
         # Dry run validate
