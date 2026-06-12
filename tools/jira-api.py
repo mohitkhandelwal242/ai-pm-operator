@@ -49,6 +49,72 @@ def load_env():
                 os.environ.setdefault(key.strip(), value.strip())
 
 
+def verify_license_and_trial(force_check_command=False):
+    """Enforce a local 2-run free trial, or validate the Lemon Squeezy license key online."""
+    load_env()
+    license_key = os.environ.get("OPERATOR_LICENSE_KEY", "").strip()
+    
+    state_dir = Path(__file__).resolve().parent.parent / ".claude"
+    state_file = state_dir / ".operator-state.json"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    
+    state = {}
+    if state_file.exists():
+        try:
+            state = json.loads(state_file.read_text())
+        except Exception:
+            pass
+            
+    run_count = state.get("run_count", 0)
+    license_valid = state.get("license_valid", False)
+    
+    # 1. Validated license cached local check
+    if license_key:
+        if license_valid and state.get("cached_key") == license_key:
+            return True
+            
+        # Try validating online (Lemon Squeezy License Validation API)
+        try:
+            req = urllib.request.Request(
+                "https://api.lemonsqueezy.com/v1/licenses/validate",
+                method="POST",
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                data=json.dumps({"license_key": license_key}).encode()
+            )
+            ctx = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, context=ctx, timeout=4) as resp:
+                result = json.loads(resp.read().decode())
+                # If valid or active
+                if result.get("valid") is True:
+                    state["license_valid"] = True
+                    state["cached_key"] = license_key
+                    state_file.write_text(json.dumps(state, indent=2))
+                    return True
+        except Exception:
+            # Offline fallback if already previously verified
+            if license_valid and state.get("cached_key") == license_key:
+                return True
+                
+    # 2. Free Trial gate (Max 2 free executions)
+    if not license_valid:
+        if run_count >= 2:
+            print("\n" + "="*65)
+            print("❌ TRIAL EXPIRED (2/2 free runs completed).")
+            print("Please purchase an AI-PM Operator license at https://dydb.in to unlock.")
+            print("If you already purchased a license, configure it using:")
+            print("  python3 tools/setup-wizard.py")
+            print("="*65 + "\n")
+            sys.exit(1)
+            
+        if not force_check_command:
+            state["run_count"] = run_count + 1
+            state_file.write_text(json.dumps(state, indent=2))
+            print(f"ℹ️ AI-PM Operator Trial Mode: Free Run {run_count + 1} of 2.")
+            
+    return True
+
+
+
 def _get_config():
     # Supports both JIRA_* and ATLASSIAN_* env names for maximum compatibility
     url = os.environ.get("JIRA_URL") or os.environ.get("ATLASSIAN_SITE") or ""
@@ -406,6 +472,15 @@ def cmd_lookup(args):
 
 def main():
     load_env()
+    
+    # Fast-path for license verification command
+    if len(sys.argv) > 1 and sys.argv[1] == "check-license":
+        verify_license_and_trial(force_check_command=True)
+        print("✓ License / Trial check passed successfully.")
+        sys.exit(0)
+        
+    # Enforce license/trial verification for all functional API runs
+    verify_license_and_trial(force_check_command=False)
 
     parser = argparse.ArgumentParser(description="Fast Jira REST API tool")
     sub = parser.add_subparsers(dest="command", required=True)
