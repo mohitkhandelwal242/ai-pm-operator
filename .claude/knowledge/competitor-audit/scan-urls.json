@@ -1,0 +1,125 @@
+{
+  "_description": "AUTO-GENERATED TEMPLATE — overwritten by /operator-onboarding and self-updated by /competitor-tracker (Phase 2.5). URLs to visit via Playwright during each competitor audit scan. Each entry defines what to extract. The single 'example' competitor below is a NEUTRAL placeholder showing the expected shape — replace with real competitors derived from business.json. Keep this valid JSON.",
+  "app_store_data": [
+    {
+      "competitor": "self",
+      "platform": "android",
+      "url": "https://play.google.com/store/apps/details?id=com.example.yourapp&hl=en",
+      "extract": ["rating", "rating_count", "installs", "version", "updated", "whats_new"],
+      "note": "Replace with your own Play Store URL (from business.json)."
+    },
+    {
+      "competitor": "self",
+      "platform": "ios",
+      "url": "https://apps.apple.com/app/id000000001",
+      "extract": ["rating", "rating_count", "version", "whats_new"],
+      "note": "Replace with your own App Store URL (from business.json)."
+    },
+    {
+      "competitor": "example",
+      "platform": "android",
+      "url": "https://play.google.com/store/apps/details?id=com.example.app&hl=en",
+      "extract": ["rating", "rating_count", "installs", "version", "updated", "whats_new"]
+    },
+    {
+      "competitor": "example",
+      "platform": "ios",
+      "url": "https://apps.apple.com/app/id000000000",
+      "extract": ["rating", "rating_count", "version", "whats_new"]
+    }
+  ],
+  "cross_verification": [
+    {
+      "competitor": "example",
+      "source": "appbrain",
+      "url": "https://www.appbrain.com/app/com.example.app",
+      "extract": ["downloads_exact", "rating"]
+    }
+  ],
+  "review_sites": [
+    {
+      "competitor": "example",
+      "source": "review_site",
+      "url": "https://review.example.com/example-competitor",
+      "extract": ["overall_rating", "recent_review_themes"]
+    }
+  ],
+  "social_media": [
+    {
+      "competitor": "example",
+      "platform": "twitter",
+      "url": "https://x.com/examplecompetitor",
+      "extract": ["recent_posts", "engagement"],
+      "note": "X.com may block — fallback to WebSearch"
+    },
+    {
+      "competitor": "example",
+      "platform": "instagram",
+      "url": "https://www.instagram.com/examplecompetitor/",
+      "extract": ["recent_posts", "post_themes", "cadence"],
+      "note": "Instagram may block — fallback to WebSearch site:instagram.com"
+    },
+    {
+      "competitor": "example",
+      "platform": "linkedin",
+      "url": "https://www.linkedin.com/company/example-competitor/",
+      "extract": ["recent_posts", "post_themes", "cadence"],
+      "note": "LinkedIn may require login — fallback to WebSearch site:linkedin.com"
+    }
+  ],
+  "ads_library": [
+    {
+      "_description": "Direct ad-library URLs scanned via Playwright every audit. Each entry produces a screenshot at /tmp/competitor-scan-ads-{tag}.png plus DOM-text excerpt (first 1500 chars) used to count active ads per competitor and surface creative themes. Set the country/region and page_id values for your market when onboarding writes real competitors.",
+      "tag": "linkedin-example",
+      "platform": "linkedin",
+      "competitor": "example",
+      "url": "https://www.linkedin.com/ad-library/search?accountOwner=Example%20Competitor"
+    },
+    {
+      "tag": "meta-page-example",
+      "platform": "meta",
+      "competitor": "example",
+      "page_id": "000000000000000",
+      "url": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&media_type=all&search_type=page&view_all_page_id=000000000000000"
+    },
+    {
+      "tag": "google-ads-example",
+      "platform": "google",
+      "competitor": "example",
+      "url": "https://adstransparency.google.com/?domain=competitor.example.com"
+    },
+    {
+      "_todo": "When onboarding/discovery adds real competitors, fill in their Meta page IDs, LinkedIn advertiser names, and Google Ads Transparency domains here so each Tier 1 competitor is probed on all three channels."
+    }
+  ],
+  "hiring": [
+    {
+      "competitor": "example",
+      "source": "linkedin_jobs",
+      "url": "https://www.linkedin.com/company/example-competitor/jobs/",
+      "extract": ["open_positions", "role_titles", "locations"]
+    }
+  ],
+  "news_rss": [
+    {
+      "keyword": "\"Example Competitor\" {your space}",
+      "url_template": "https://news.google.com/rss/search?q={ENCODED_QUERY}+when:7d&hl=en&ceid=US:en"
+    },
+    {
+      "keyword": "\"{your space}\" 2026",
+      "url_template": "https://news.google.com/rss/search?q={ENCODED_QUERY}+when:7d&hl=en&ceid=US:en"
+    }
+  ],
+  "discovery_queries": [
+    {
+      "_description": "Run every scan in Phase 2.5 (Competitor Discovery) via WebSearch. Advertiser-agnostic queries that surface NEW entrants, not the known set. Build these from business.json (industry / business_type / space / region). Any app/company appearing here that is not already in competitors.md must be triaged and written back (auto-tier into Watchlist by default).",
+      "queries": [
+        "new {your space} app {region} 2026 launch",
+        "best {your space} apps {region} 2026",
+        "{your space} startup {region} funding 2026",
+        "{your industry} {business_type} app {region} 2026",
+        "\"{your space}\" {region} Play Store new 2026"
+      ]
+    }
+  ]
+}

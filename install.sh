@@ -47,6 +47,7 @@ cp -r /tmp/ai-pm-operator/.claude .
 cp -r /tmp/ai-pm-operator/tools .
 cp /tmp/ai-pm-operator/.env.example .
 cp /tmp/ai-pm-operator/team.json.template .
+cp /tmp/ai-pm-operator/business.json.template .
 cp /tmp/ai-pm-operator/README.md .
 cp /tmp/ai-pm-operator/CLAUDE.md .
 rm -rf /tmp/ai-pm-operator

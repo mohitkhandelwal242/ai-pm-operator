@@ -13,7 +13,7 @@ Automated Kanban sweep: audit flow health, surface blockers, follow up on stale 
 
 This skill has a **daily-ops** subskill designed to run every day automatically:
 - **Trigger**: "run daily ops", "daily kanban", "daily jira ops", or any morning routine
-- **Instructions**: See [daily-ops.md](file:///Users/sworks/Downloads/kite-starter-kit/product/.claude/skills/scrum-master/daily-ops.md) in this directory
+- **Instructions**: See [daily-ops.md](daily-ops.md) in this directory
 - **What it does**:
   1. Auto-assigns all unassigned tickets to the PM for triage
   2. Adds "Are we doing anything?" nudge comment on tickets stale 10+ days

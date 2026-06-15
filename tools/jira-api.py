@@ -12,6 +12,8 @@ Subcommands:
     worklog      PROJ-123 2h [-c "desc"]   Log time spent
     worklog-list PROJ-123 [--since 2026-04-01]  List worklogs on an issue
     epic-time    PROJ-123 [--since 2026-04-01]  Aggregate time across epic children
+    check-license                              Verify license/trial status
+    verify-key   <KEY>                          Test a Gumroad key against the live API (no activation used)
 
 Environment (from .env):
     JIRA_URL, JIRA_EMAIL, JIRA_TOKEN, JIRA_PROJECT_KEY
@@ -50,97 +52,245 @@ def load_env():
                 os.environ.setdefault(key.strip(), value.strip())
 
 
-def verify_license_and_trial(force_check_command=False):
-    """Enforce a local 3-day free trial, or validate the PayPal subscription ID online."""
+# ==============================================================================
+# Gumroad licensing — set these for your product (see product/README.md).
+#   GUMROAD_PRODUCT_PERMALINK : the "/l/<slug>" part of your product URL
+#                               (e.g. pmoperator.gumroad.com/l/gfvonp -> "gfvonp").
+#   GUMROAD_PRODUCT_ID        : optional; if set it takes precedence over the
+#                               permalink. Find it via the Gumroad API; the
+#                               permalink works fine on its own.
+#   SUBSCRIBE_URL             : your checkout link, shown when the trial expires
+#                               or a license is invalid.
+# All can be overridden via environment variables of the same name.
+# ==============================================================================
+GUMROAD_PRODUCT_PERMALINK = os.environ.get("GUMROAD_PRODUCT_PERMALINK", "gfvonp")
+GUMROAD_PRODUCT_ID = os.environ.get("GUMROAD_PRODUCT_ID", "Dyp8KL6VjWdE_d6MG7Lb0Q==")
+SUBSCRIBE_URL = os.environ.get("OPERATOR_SUBSCRIBE_URL", "https://get.dydb.in")
+GUMROAD_VERIFY_ENDPOINT = "https://api.gumroad.com/v2/licenses/verify"
+
+
+def gumroad_verify_license(license_key, increment=False):
+    """Verify a Gumroad license key via the public license API (no auth token needed).
+
+    Returns (active: bool, detail: str). Raises on connectivity errors so callers
+    can apply their offline-grace fallback. A 404 is treated as a definitive
+    'invalid key' rather than a connectivity failure.
+    """
+    params = {
+        "license_key": license_key,
+        # Never bump the use-counter on routine runtime checks.
+        "increment_uses_count": "true" if increment else "false",
+    }
+    # product_id takes precedence if provided; otherwise use the permalink.
+    if GUMROAD_PRODUCT_ID:
+        params["product_id"] = GUMROAD_PRODUCT_ID
+    else:
+        params["product_permalink"] = GUMROAD_PRODUCT_PERMALINK
+    data = urllib.parse.urlencode(params).encode()
+    req = urllib.request.Request(
+        GUMROAD_VERIFY_ENDPOINT, data=data, method="POST",
+        headers={"Accept": "application/json"},
+    )
+    ctx = ssl.create_default_context(cafile=certifi.where()) if HAS_CERTIFI else ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+            result = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False, "License key not found for this product."
+        raise  # 5xx / other -> let the caller treat as a connectivity error
+
+    if not result.get("success"):
+        return False, result.get("message", "License key is invalid.")
+
+    purchase = result.get("purchase") or {}
+    # A refund, chargeback, or dispute revokes access.
+    for bad in ("refunded", "chargebacked", "disputed"):
+        if purchase.get(bad):
+            return False, f"Purchase was {bad}."
+    # For subscription products, any of these being set means it has lapsed.
+    for ended in ("subscription_cancelled_at", "subscription_ended_at", "subscription_failed_at"):
+        if purchase.get(ended):
+            return False, "Subscription is no longer active."
+    return True, "active"
+
+
+def verify_key_cli(license_key):
+    """Diagnostic: verify a Gumroad license key against the LIVE API and print the full result.
+
+    Does NOT increment the activation/uses counter, so it's safe to run repeatedly while
+    testing. Use: python3 tools/jira-api.py verify-key <KEY>
+    """
     load_env()
-    subscription_id = os.environ.get("OPERATOR_SUBSCRIPTION_ID", "").strip()
-    
+    key = (license_key or os.environ.get("OPERATOR_LICENSE_KEY", "")).strip()
+    print("="*65)
+    print("AI-PM Operator — Gumroad license verification (test mode)")
+    print("="*65)
+    print(f"Endpoint   : {GUMROAD_VERIFY_ENDPOINT}")
+    print(f"Product ID : {GUMROAD_PRODUCT_ID or '(using permalink)'}")
+    print(f"Permalink  : {GUMROAD_PRODUCT_PERMALINK}")
+    print(f"Key        : {key or '(none provided)'}")
+    print("-"*65)
+    if not key:
+        print("❌ No license key given. Pass one: python3 tools/jira-api.py verify-key <KEY>")
+        sys.exit(2)
+
+    params = {"license_key": key, "increment_uses_count": "false"}
+    if GUMROAD_PRODUCT_ID:
+        params["product_id"] = GUMROAD_PRODUCT_ID
+    else:
+        params["product_permalink"] = GUMROAD_PRODUCT_PERMALINK
+    data = urllib.parse.urlencode(params).encode()
+    req = urllib.request.Request(
+        GUMROAD_VERIFY_ENDPOINT, data=data, method="POST",
+        headers={"Accept": "application/json"},
+    )
+    ctx = ssl.create_default_context(cafile=certifi.where()) if HAS_CERTIFI else ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+            result = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode() if e.fp else ""
+        if e.code == 404:
+            print("❌ RESULT: INVALID — key not found for this product (HTTP 404).")
+            print("   Check that GUMROAD_PRODUCT_ID / permalink matches the product the key was issued for.")
+        else:
+            print(f"❌ HTTP {e.code} from Gumroad: {body}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Could not reach Gumroad: {e}")
+        sys.exit(1)
+
+    print("Raw Gumroad response:")
+    print(json.dumps(result, indent=2))
+    print("-"*65)
+    active, detail = gumroad_verify_license(key)  # reuse the same logic the gate uses
+    if active:
+        purchase = result.get("purchase") or {}
+        uses = result.get("uses")
+        print("✅ RESULT: ACTIVE — this key would unlock the product.")
+        print(f"   Buyer email : {purchase.get('email', 'n/a')}")
+        print(f"   Product     : {purchase.get('product_name', 'n/a')}")
+        if uses is not None:
+            print(f"   Uses count  : {uses}")
+    else:
+        print(f"❌ RESULT: INACTIVE — {detail}")
+        sys.exit(1)
+    sys.exit(0)
+
+
+def verify_license_and_trial(force_check_command=False):
+    """Validate the Gumroad license key online, or fall back to a local 7-day trial."""
+    load_env()
+    license_key = os.environ.get("OPERATOR_LICENSE_KEY", "").strip()
+
     state_dir = Path(__file__).resolve().parent.parent / ".claude"
     state_file = state_dir / ".operator-state.json"
     state_dir.mkdir(parents=True, exist_ok=True)
-    
+
     state = {}
     if state_file.exists():
         try:
             state = json.loads(state_file.read_text())
         except Exception:
             pass
-            
+
     current_time = time.time()
     license_valid = state.get("license_valid", False)
     last_checked = state.get("last_checked", 0.0)
     cached_key = state.get("cached_key", "")
-    
-    # 1. PayPal Subscription validation
-    if subscription_id:
+
+    # 1. Gumroad license validation
+    if license_key:
         # Check cache if valid, not changed, and checked less than 24 hours ago
-        if license_valid and cached_key == subscription_id and (current_time - last_checked < 86400):
+        if license_valid and cached_key == license_key and (current_time - last_checked < 86400):
             return True
-            
-        # Validate online via dydb.in/verify.php
+
+        # Validate online via the Gumroad license API
         try:
-            url = f"https://dydb.in/verify.php?subscription_id={urllib.parse.quote(subscription_id)}"
-            req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            ctx = ssl.create_default_context(cafile=certifi.where()) if HAS_CERTIFI else ssl.create_default_context()
-            with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
-                result = json.loads(resp.read().decode())
-                if result.get("valid") is True:
-                    state["license_valid"] = True
-                    state["cached_key"] = subscription_id
-                    state["last_checked"] = current_time
-                    state_file.write_text(json.dumps(state, indent=2))
-                    return True
-                else:
-                    # Invalidate if payment declined, cancelled, etc.
-                    state["license_valid"] = False
-                    state["cached_key"] = subscription_id
-                    state["last_checked"] = current_time
-                    state_file.write_text(json.dumps(state, indent=2))
-                    print("\n" + "="*65)
-                    print("❌ PAYPAL SUBSCRIPTION INACTIVE OR DECLINED.")
-                    print(f"Subscription ID: {subscription_id}")
-                    print("Please check your payment status or update details at https://dydb.in.")
-                    print("Run the setup wizard to update your subscription ID:")
-                    print("  python3 tools/setup-wizard.py")
-                    print("="*65 + "\n")
-                    sys.exit(1)
+            active, detail = gumroad_verify_license(license_key)
+            if active:
+                state["license_valid"] = True
+                state["cached_key"] = license_key
+                state["last_checked"] = current_time
+                state_file.write_text(json.dumps(state, indent=2))
+                return True
+            else:
+                # Invalidate if refunded, cancelled, lapsed, etc.
+                state["license_valid"] = False
+                state["cached_key"] = license_key
+                state["last_checked"] = current_time
+                state_file.write_text(json.dumps(state, indent=2))
+                print("\n" + "="*65)
+                print("❌ GUMROAD LICENSE INACTIVE OR INVALID.")
+                print(f"Reason: {detail}")
+                print(f"License key: {license_key}")
+                print(f"Subscribe / manage your plan: {SUBSCRIBE_URL}")
+                print("After subscribing, paste your new license key via:")
+                print("  python3 tools/setup-wizard.py")
+                print("="*65 + "\n")
+                sys.exit(1)
         except Exception as e:
             # Offline fallback if already previously verified (within 3 days of offline tolerance)
-            if license_valid and cached_key == subscription_id and (current_time - last_checked < 259200):
+            if license_valid and cached_key == license_key and (current_time - last_checked < 259200):
                 return True
-            print(f"\n⚠️ Offline connection warning: Could not verify subscription ({e}).")
+            print(f"\n⚠️ Offline connection warning: Could not verify license ({e}).")
             if not license_valid:
                 # Fall through to trial check if not previously verified
                 pass
 
-    # 2. 3-day Free Trial gate
+    # 2. 7-day Free Trial gate
+    def _trial_expired_block():
+        print("\n" + "="*65)
+        print("❌ 7-DAY FREE TRIAL EXPIRED.")
+        print("Subscribe to keep using AI-PM Operator:")
+        print(f"  {SUBSCRIBE_URL}")
+        print("Then paste your Gumroad license key via:")
+        print("  python3 tools/setup-wizard.py")
+        print("="*65 + "\n")
+        sys.exit(1)
+
+    def _trial_remaining(seconds_left):
+        if force_check_command:
+            return
+        days_left = seconds_left / 86400
+        if days_left > 1:
+            print(f"ℹ️ AI-PM Operator Trial: {days_left:.1f} days remaining.")
+        else:
+            print(f"ℹ️ AI-PM Operator Trial: {seconds_left / 3600:.1f} hours remaining.")
+        print(f"   Subscribe anytime: {SUBSCRIBE_URL}")
+
+    trial_limit = 7 * 24 * 60 * 60  # 7 days in seconds
+
+    # 2a. Prefer the SERVER's verdict — keyed on an anonymous machine fingerprint, so it
+    #     resists the usual local resets (deleting .operator-state.json / re-pulling).
+    #     Falls back to the local timer when offline or when telemetry is opted out.
+    try:
+        import telemetry
+        verdict = telemetry.check_trial(license_status="trial")
+    except Exception:
+        verdict = None
+
+    if verdict is not None:
+        if verdict.get("trial_expired"):
+            _trial_expired_block()
+        days_left = verdict.get("days_left")
+        if isinstance(days_left, (int, float)):
+            _trial_remaining(days_left * 86400)
+        return True
+
+    # 2b. Local fallback gate.
     trial_start = state.get("trial_start_time")
-    
     if trial_start is None:
         trial_start = current_time
         state["trial_start_time"] = trial_start
         state_file.write_text(json.dumps(state, indent=2))
-        
+
     elapsed = current_time - trial_start
-    trial_limit = 3 * 24 * 60 * 60 # 3 days in seconds
-    
     if elapsed > trial_limit:
-        print("\n" + "="*65)
-        print("❌ 3-DAY FREE TRIAL EXPIRED.")
-        print("Please set up your subscription at https://dydb.in to continue.")
-        print("Once subscribed, configure your PayPal Subscription ID using:")
-        print("  python3 tools/setup-wizard.py")
-        print("="*65 + "\n")
-        sys.exit(1)
-        
-    if not force_check_command:
-        days_left = (trial_limit - elapsed) / 86400
-        if days_left > 1:
-            print(f"ℹ️ AI-PM Operator Trial: {days_left:.1f} days remaining.")
-        else:
-            hours_left = (trial_limit - elapsed) / 3600
-            print(f"ℹ️ AI-PM Operator Trial: {hours_left:.1f} hours remaining.")
-            
+        _trial_expired_block()
+
+    _trial_remaining(trial_limit - elapsed)
     return True
 
 
@@ -503,6 +653,11 @@ def cmd_lookup(args):
 def main():
     load_env()
     
+    # Fast-path: test a Gumroad key against the live API (does not consume an activation)
+    if len(sys.argv) > 1 and sys.argv[1] == "verify-key":
+        verify_key_cli(sys.argv[2] if len(sys.argv) > 2 else "")
+        sys.exit(0)
+
     # Fast-path for license verification command
     if len(sys.argv) > 1 and sys.argv[1] == "check-license":
         verify_license_and_trial(force_check_command=True)
@@ -511,6 +666,14 @@ def main():
         
     # Enforce license/trial verification for all functional API runs
     verify_license_and_trial(force_check_command=False)
+
+    # Best-effort, throttled (daily) usage heartbeat. Sends only a non-sensitive
+    # business summary; respects OPERATOR_TELEMETRY=off. Never blocks or raises.
+    try:
+        import telemetry
+        telemetry.send("ping")
+    except Exception:
+        pass
 
     parser = argparse.ArgumentParser(description="Fast Jira REST API tool")
     sub = parser.add_subparsers(dest="command", required=True)

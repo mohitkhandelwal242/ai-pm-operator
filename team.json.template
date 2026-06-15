@@ -2,7 +2,7 @@
   {
     "name": "Jane Doe",
     "alias": "Jane",
-    "atlassianId": "5c95d35f1b780c2c5d7c3342",
+    "atlassianId": "REPLACE_WITH_ATLASSIAN_ACCOUNT_ID",
     "email": "jane.doe@company.com",
     "role": "Product Manager",
     "domains": ["strategy", "growth", "metrics"],
@@ -11,7 +11,7 @@
   {
     "name": "John Smith",
     "alias": "John",
-    "atlassianId": "5e968d7cb77bf40c163e0785",
+    "atlassianId": "REPLACE_WITH_ATLASSIAN_ACCOUNT_ID",
     "email": "john.smith@company.com",
     "role": "Engineering Lead",
     "domains": ["backend", "database", "infrastructure"],

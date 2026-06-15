@@ -1,0 +1,15 @@
+{
+  "_description": "AUTO-GENERATED BASELINE — overwritten by /competitor-tracker at the end of every scan (Phase 10). On a fresh install this is an empty baseline: the first real scan has no delta and treats everything as new. Competitors here are populated from business.json + discovery.",
+  "scan_date": null,
+  "baseline_compared": null,
+  "competitors": {},
+  "news_headlines": [],
+  "trends_snapshot": null,
+  "hiring_signals": [],
+  "discovery": {
+    "new_competitors_added": [],
+    "trending": [],
+    "pending_tier1_promotion": []
+  },
+  "strategic_response": {}
+}

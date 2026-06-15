@@ -1,0 +1,28 @@
+{
+  "_comment": "Business profile for AI-PM Operator. The onboarding flow (/operator-onboarding) fills this in by inferring from your repo and asking a few questions. Skills read this file for business context (industry, metrics, competitors, domain). Safe to edit by hand any time. This file stays local — it is gitignored.",
+  "company": {
+    "name": "",
+    "product_name": "",
+    "one_liner": "",
+    "website_domain": "",
+    "industry": "",
+    "business_type": "",
+    "revenue_model": "",
+    "target_users": "",
+    "primary_platforms": []
+  },
+  "metrics": {
+    "north_star": "",
+    "key_metrics": []
+  },
+  "competitors": [
+    { "name": "", "domain": "", "android_package": "", "ios_id": "", "tier": 1 }
+  ],
+  "stack": {
+    "issue_tracker": "jira",
+    "docs": "confluence",
+    "analytics": "ga4",
+    "code_repos": []
+  },
+  "context_notes": ""
+}

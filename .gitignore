@@ -1,0 +1,8 @@
+.env
+team.json
+business.json
+.claude/.operator-state.json
+google-credentials.json
+__pycache__/
+*.pyc
+.DS_Store

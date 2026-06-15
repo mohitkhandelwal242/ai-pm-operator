@@ -114,33 +114,69 @@ def scan_codebase():
     
     return diagnostic
 
-def validate_subscription(sub_id):
-    if not sub_id:
+# Gumroad licensing — keep in sync with tools/jira-api.py.
+GUMROAD_PRODUCT_PERMALINK = os.environ.get("GUMROAD_PRODUCT_PERMALINK", "gfvonp")
+GUMROAD_PRODUCT_ID = os.environ.get("GUMROAD_PRODUCT_ID", "Dyp8KL6VjWdE_d6MG7Lb0Q==")
+GUMROAD_VERIFY_ENDPOINT = "https://api.gumroad.com/v2/licenses/verify"
+
+
+def validate_license(license_key):
+    if not license_key:
         return True
-    
-    print_info("Validating PayPal Subscription ID with server...")
-    if not sub_id.startswith("I-") or len(sub_id.strip()) < 10:
-        print_error("Invalid PayPal subscription ID format. Should start with 'I-'.")
+
+    print_info("Validating Gumroad license key...")
+    # Gumroad keys look like XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
+    if len(license_key.strip()) < 8:
+        print_error("That doesn't look like a Gumroad license key.")
         return False
-        
+
     try:
         import ssl
-        url = f"https://dydb.in/verify.php?subscription_id={urllib.parse.quote(sub_id)}"
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        params = {
+            "license_key": license_key,
+            # Count this activation once, at setup time.
+            "increment_uses_count": "true",
+        }
+        if GUMROAD_PRODUCT_ID:
+            params["product_id"] = GUMROAD_PRODUCT_ID
+        else:
+            params["product_permalink"] = GUMROAD_PRODUCT_PERMALINK
+        data = urllib.parse.urlencode(params).encode()
+        req = urllib.request.Request(
+            GUMROAD_VERIFY_ENDPOINT, data=data, method="POST",
+            headers={"Accept": "application/json"},
+        )
         ctx = ssl.create_default_context()
-        with urllib.request.urlopen(req, context=ctx, timeout=5) as response:
-            if response.status == 200:
-                data = json.loads(response.read().decode())
-                if data.get("valid") is True:
-                    print_success(f"Subscription is ACTIVE! Status: {data.get('status')}")
-                    return True
-                else:
-                    print_error(f"Subscription validation failed: {data.get('error', 'Not active')}")
-                    return False
-    except Exception as e:
-        print_error(f"Could not connect to subscription verification server: {str(e)}")
-        print_warning("Server offline. Continuing under 3-day local trial.")
+        with urllib.request.urlopen(req, context=ctx, timeout=8) as response:
+            result = json.loads(response.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print_error("License key not found for this product. Double-check the key.")
+            return False
+        print_error(f"Could not verify license (HTTP {e.code}).")
+        print_warning("Verification server unreachable. Continuing under 7-day local trial.")
         return True
+    except Exception as e:
+        print_error(f"Could not connect to Gumroad: {str(e)}")
+        print_warning("Server offline. Continuing under 7-day local trial.")
+        return True
+
+    if not result.get("success"):
+        print_error(f"License validation failed: {result.get('message', 'Invalid key')}")
+        return False
+
+    purchase = result.get("purchase") or {}
+    for bad in ("refunded", "chargebacked", "disputed"):
+        if purchase.get(bad):
+            print_error(f"This purchase was {bad}; the license is not active.")
+            return False
+    for ended in ("subscription_cancelled_at", "subscription_ended_at", "subscription_failed_at"):
+        if purchase.get(ended):
+            print_error("This subscription is no longer active. Please re-subscribe.")
+            return False
+
+    print_success("License is ACTIVE! Subscription verified.")
+    return True
 
 def validate_jira(url, email, token, project_key):
     print_info("Connecting to Jira and validating credentials...")
@@ -184,11 +220,17 @@ def validate_jira(url, email, token, project_key):
         
     return False
 
-def initialize_competitors(competitors_list):
-    """Initializes custom competitors.md and scan-urls.json configs based on user input."""
+def initialize_competitors(competitors_list, market=""):
+    """Initializes custom competitors.md and scan-urls.json configs based on user input.
+
+    `market` is a short description of the user's space (e.g. business type / industry)
+    used to build generic discovery search queries — no vertical is hardcoded.
+    """
     os.makedirs(".claude/knowledge/competitor-audit", exist_ok=True)
-    
-    # 1. Write scan-urls.json
+
+    space = (market or "your market").strip()
+
+    # 1. Write scan-urls.json — discovery queries derived from the user's own market
     scan_urls = {
         "app_store_data": [],
         "cross_verification": [],
@@ -197,48 +239,48 @@ def initialize_competitors(competitors_list):
         "discovery_queries": [
             {
                 "queries": [
-                    "new carpool app India 2026 launch",
-                    "best carpooling apps India 2026",
-                    "carpool startup India funding 2026"
+                    f"new {space} startups",
+                    f"best {space} tools",
+                    f"{space} funding announcements"
                 ]
             }
         ]
     }
-    
+
     competitors_md = "# Competitor Registry\n\n## Tracked Competitors\n\n"
-    
+
     for comp in competitors_list:
         name = comp["name"]
         domain = comp["domain"]
         package = comp["package"]
-        
+
         # Add to scan-urls lists
         if package:
             scan_urls["app_store_data"].append({
                 "competitor": name.lower(),
                 "android_url": f"https://play.google.com/store/apps/details?id={package}",
-                "ios_url": f"https://apps.apple.com/in/app/{name.lower()}/id12345678"
+                "ios_url": f"https://apps.apple.com/app/{name.lower()}/id12345678"
             })
             scan_urls["cross_verification"].append({
                 "competitor": name.lower(),
                 "appbrain_url": f"https://www.appbrain.com/app/{package}"
             })
-            
+
         scan_urls["ads_library"].append({
             "competitor": name.lower(),
             "google_transparency_url": f"https://adstransparency.google.com/?domain={domain}"
         })
         scan_urls["news_rss"].append({
             "competitor": name.lower(),
-            "query": f'"{name}" carpool India'
+            "query": f'"{name}" {space}'.strip()
         })
-        
+
         # Add to competitors.md profile
         competitors_md += f"### {name} (Tier 1)\n"
         competitors_md += f"- **Website**: [https://{domain}](https://{domain})\n"
         if package:
             competitors_md += f"- **Android App ID**: `{package}`\n"
-        competitors_md += f"- **Classification**: Daily commute commute ridesharing\n\n"
+        competitors_md += f"- **Classification**: {space}\n\n"
         
     # Write files
     with open(".claude/knowledge/competitor-audit/scan-urls.json", "w") as f:
@@ -264,6 +306,65 @@ def initialize_competitors(competitors_list):
         json.dump(last_scan, f, indent=2)
 
     print_success("Initialized customized competitor tracking reference files.")
+
+def configure_business_profile(diagnostic):
+    """Capture a lightweight business profile and write business.json.
+
+    This is what makes the toolkit business-agnostic: skills read business.json for
+    industry, metrics, and competitors instead of any hardcoded vertical.
+    Returns a short 'market' descriptor used to seed competitor discovery queries.
+    """
+    print_header("Step 1: Your Business Profile")
+    print("A few quick details so every skill speaks your business's language.")
+    print(f"(Detected stack: {', '.join(diagnostic.get('tech_stack', [])) or 'unknown'})\n")
+
+    company_name = input("Company name: ").strip()
+    product_name = input("Product name (Enter to reuse company name): ").strip() or company_name
+    one_liner = input("One-line description of what you do: ").strip()
+    business_type = input("Business type (e.g. B2B SaaS, Consumer app, Marketplace, E-commerce): ").strip()
+    industry = input("Industry (e.g. fintech, health, dev tools): ").strip()
+    revenue_model = input("Revenue model (e.g. subscription, transaction, ads): ").strip()
+    target_users = input("Who are your target users? ").strip()
+    platforms_raw = input("Primary platforms (comma separated: web, ios, android, api): ").strip()
+    platforms = [p.strip().lower() for p in platforms_raw.split(",") if p.strip()]
+    website_domain = input("Website domain (e.g. acme.com): ").strip()
+    north_star = input("North-star metric (e.g. MRR, DAU, GMV): ").strip()
+    metrics_raw = input("Other key metrics (comma separated): ").strip()
+    key_metrics = [m.strip() for m in metrics_raw.split(",") if m.strip()]
+
+    market = (industry or business_type or "your market").strip()
+
+    business = {
+        "company": {
+            "name": company_name,
+            "product_name": product_name,
+            "one_liner": one_liner,
+            "website_domain": website_domain,
+            "industry": industry,
+            "business_type": business_type,
+            "revenue_model": revenue_model,
+            "target_users": target_users,
+            "primary_platforms": platforms,
+        },
+        "metrics": {
+            "north_star": north_star,
+            "key_metrics": key_metrics,
+        },
+        "competitors": [],
+        "stack": {
+            "issue_tracker": "jira",
+            "docs": "confluence",
+            "analytics": "ga4",
+            "code_repos": [],
+        },
+        "context_notes": "",
+    }
+
+    with open("business.json", "w") as f:
+        json.dump(business, f, indent=2)
+    print_success("Created business.json profile.")
+    return business, market, website_domain
+
 
 def display_readiness_report(diagnostic, jira_configured, conf_configured, analytics_configured, comp_configured):
     """Outputs a beautiful operational readiness status for all 14 skills."""
@@ -314,23 +415,26 @@ def main():
     
     # Run Environment Diagnostics First
     diagnostic = scan_codebase()
-    
-    # 1. Subscription Check
-    print_header("Step 1: PayPal Subscription ID")
-    print("If you have subscribed, enter your PayPal Subscription ID (starts with 'I-').")
-    print("If you want to use the 3-day free trial, press Enter/return to skip.")
-    subscription_id = ""
+
+    # 1. Business Profile (writes business.json)
+    business, market, website_domain = configure_business_profile(diagnostic)
+
+    # 2. License Check
+    print_header("Step 2: Gumroad License Key")
+    print("If you have subscribed, enter the Gumroad license key from your receipt email.")
+    print("If you want to use the 7-day free trial, press Enter/return to skip.")
+    license_key = ""
     while True:
-        subscription_id = input("\nEnter PayPal Subscription ID (or press Enter to skip): ").strip()
-        if not subscription_id:
-            print_info("Using 3-day free trial mode.")
+        license_key = input("\nEnter Gumroad License Key (or press Enter to skip): ").strip()
+        if not license_key:
+            print_info("Using 7-day free trial mode.")
             break
-        if validate_subscription(subscription_id):
+        if validate_license(license_key):
             break
-        print_error("Invalid subscription. Please check your Subscription ID and try again.")
+        print_error("Invalid license. Please check your key and try again.")
     
-    # 2. Jira Credentials
-    print_header("Step 2: Connect Jira Cloud")
+    # 3. Jira Credentials
+    print_header("Step 3: Connect Jira Cloud")
     print("Generate an Atlassian API Token here: https://id.atlassian.com/manage-profile/security/api-tokens")
     
     jira_configured = False
@@ -355,63 +459,69 @@ def main():
             print_warning("Skipping Jira validation. Credentials written as-is.")
             break
             
-    # 3. Confluence (Optional)
-    print_header("Step 3: Confluence Integration (Optional)")
+    # 4. Confluence (Optional)
+    print_header("Step 4: Confluence Integration (Optional)")
     enable_conf = input("Do you want to configure Confluence for publishing reports? (y/N): ").strip().lower()
     conf_space = ""
     conf_parent = ""
     conf_configured = False
     if enable_conf == 'y':
+        print_info("Space Key = the code in a Confluence URL: /wiki/spaces/<KEY>/...")
         conf_space = input("Confluence Space Key (e.g., PMOPS): ").strip().upper()
+        print_info("Parent Page ID = open the page reports should file under; the number in /pages/<ID>/...")
         conf_parent = input("Confluence Parent Page ID (optional): ").strip()
         conf_configured = True
 
-    # 4. Competitor Tracker Setup
-    print_header("Step 4: Initialize Competitor Tracker")
-    enable_comp = input("Do you want to set up custom competitors to track? (y/N): ").strip().lower()
+    # 5. Competitor Tracker Setup
+    print_header("Step 5: Initialize Competitor Tracker")
+    enable_comp = input("Do you want to set up competitors to track? (y/N): ").strip().lower()
     comp_configured = False
     if enable_comp == 'y':
         competitors_list = []
-        print("\nEnter competitor details. Let's add at least 2 competitors.")
+        print("\nEnter competitor details. Add at least 1-2 competitors.")
         while True:
-            name = input("Competitor Name (e.g., QuickRide): ").strip()
-            domain = input("Competitor Domain (e.g., quickride.in): ").strip()
-            package = input("Android App ID (optional, e.g., co.quickride): ").strip()
+            name = input("Competitor Name: ").strip()
+            domain = input("Competitor Domain (e.g., competitor.com): ").strip()
+            package = input("Android App ID (optional, e.g., com.competitor.app): ").strip()
             competitors_list.append({"name": name, "domain": domain, "package": package})
-            
+
             more = input("Add another competitor? (Y/n): ").strip().lower()
             if more == 'n':
                 break
         if competitors_list:
-            initialize_competitors(competitors_list)
+            initialize_competitors(competitors_list, market)
+            # mirror into business.json
+            business["competitors"] = [
+                {"name": c["name"], "domain": c["domain"], "android_package": c["package"], "ios_id": "", "tier": 1}
+                for c in competitors_list
+            ]
+            with open("business.json", "w") as f:
+                json.dump(business, f, indent=2)
             comp_configured = True
     else:
-        # Check if default registry exists
         if diagnostic["config_status"]["competitors_exists"]:
             comp_configured = True
             print_info("Using existing competitor registry settings.")
         else:
-            # Setup default mockup competitors
-            default_competitors = [
-                {"name": "QuickRide", "domain": "quickride.in", "package": "co.quickride"},
-                {"name": "Hopr", "domain": "hopr.mobi", "package": "com.hopr.commute"}
-            ]
-            initialize_competitors(default_competitors)
-            comp_configured = True
+            # Create an empty registry — no vertical defaults. The /competitor-tracker
+            # skill (or re-running onboarding) can populate it later.
+            initialize_competitors([], market)
+            print_info("Created an empty competitor registry. Add competitors later via /competitor-tracker.")
 
-    # 5. Analytics Integrations (Optional)
-    print_header("Step 5: Analytics Integrations (Optional)")
+    # 6. Analytics Integrations (Optional)
+    print_header("Step 6: Analytics Integrations (Optional)")
     enable_analytics = input("Do you want to configure Google Analytics & Search Console? (y/N): ").strip().lower()
     ga4_prop = ""
     gsc_url = ""
     analytics_configured = False
     if enable_analytics == 'y':
+        print_info("GA4 Property ID = GA4 → Admin → Property settings (a 9-digit number).")
         ga4_prop = input("Google Analytics 4 Property ID (optional): ").strip()
         gsc_url = input("Google Search Console Property URL (e.g., https://mycompany.com): ").strip()
         analytics_configured = True
 
-    # 6. Team Roster Setup
-    print_header("Step 6: Configure Team Roster")
+    # 7. Team Roster Setup
+    print_header("Step 7: Configure Team Roster")
     print("Set up your key team members so AI-PM Operator can route and assign issues correctly.")
     
     team_members = []
@@ -423,7 +533,8 @@ def main():
         name = input("Full Name (e.g., John Smith): ").strip()
         alias = input("Short Name / Alias (e.g., John): ").strip()
         email = input("Email: ").strip()
-        atlassian_id = input("Atlassian Account ID (Find in Jira profile URL): ").strip()
+        print_info("Tip: find the Account ID via  python3 tools/jira-api.py lookup \"" + (email or "name") + "\"  — or leave blank to fill later.")
+        atlassian_id = input("Atlassian Account ID (optional — Enter to skip): ").strip()
         role = input("Role (e.g., Developer, QA, Designer): ").strip()
         domains_raw = input("Domains of expertise (comma separated, e.g. backend, database): ")
         domains = [d.strip().lower() for d in domains_raw.split(',') if d.strip()]
@@ -450,14 +561,24 @@ def main():
             json.dump(team_members, f, indent=2)
         print_success("Created team.json roster.")
         
-    # 7. Write .env
-    print_header("Step 7: Writing Environment Configuration")
-    
+    # 8. Write .env
+    print_header("Step 8: Writing Environment Configuration")
+
     env_content = f"""# ==============================================================================
 # AI-PM Operator — Environment Configuration (Generated)
 # ==============================================================================
 
-OPERATOR_SUBSCRIPTION_ID={subscription_id}
+OPERATOR_LICENSE_KEY={license_key}
+
+# Vendor analytics: a non-sensitive business profile summary (company/product name,
+# business type, industry, platforms — NEVER credentials or team data) is sent to the
+# maker so they can see what kinds of businesses use AI-PM Operator. Set to off to opt out.
+OPERATOR_TELEMETRY=on
+OPERATOR_TELEMETRY_URL=https://dydb.in/operator/collect.php
+
+# Project context (used by SEO/analytics skills)
+PROJECT_DOMAIN={website_domain}
+PROJECT_KEY={jira_project}
 
 # Jira Integration
 JIRA_URL={jira_url}
@@ -491,12 +612,20 @@ GSC_PROPERTY_URL={gsc_url}
             gitignore = f.read()
         if ".env" not in gitignore:
             with open(".gitignore", "a") as f:
-                f.write("\n# AI-PM Operator Env\n.env\nteam.json\n")
-            print_success("Added .env and team.json to .gitignore.")
+                f.write("\n# AI-PM Operator Env\n.env\nbusiness.json\nteam.json\n")
+            print_success("Added .env, business.json and team.json to .gitignore.")
             
     print_success("Configuration file .env written successfully.")
-    
-    # 8. Readiness Report
+
+    # Register this install with the vendor (non-sensitive business summary only;
+    # respects OPERATOR_TELEMETRY=off). Best-effort, never blocks setup.
+    try:
+        import telemetry
+        telemetry.send("install")
+    except Exception:
+        pass
+
+    # 9. Readiness Report
     display_readiness_report(diagnostic, jira_configured, conf_configured, analytics_configured, comp_configured)
     
     print(f"\n{Colors.BOLD}{Colors.GREEN}✦ AI-PM Operator Setup Completed! ✦{Colors.END}")
