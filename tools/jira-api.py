@@ -65,7 +65,7 @@ def load_env():
 # ==============================================================================
 GUMROAD_PRODUCT_PERMALINK = os.environ.get("GUMROAD_PRODUCT_PERMALINK", "gfvonp")
 GUMROAD_PRODUCT_ID = os.environ.get("GUMROAD_PRODUCT_ID", "Dyp8KL6VjWdE_d6MG7Lb0Q==")
-SUBSCRIBE_URL = os.environ.get("OPERATOR_SUBSCRIBE_URL", "https://get.dydb.in")
+SUBSCRIBE_URL = os.environ.get("OPERATOR_SUBSCRIBE_URL", "https://dydb.in")
 GUMROAD_VERIFY_ENDPOINT = "https://api.gumroad.com/v2/licenses/verify"
 
 
