@@ -6,13 +6,13 @@
 
 **Stop prompting. Start operating.** 19 production-grade PM skills that connect to your *real* tools — Jira, Confluence, Google Analytics, Search Console, the app stores — and actually do the work: audit the board, score the backlog, draft the PRD, write the leadership deck, track competitors, surface what customers are asking for.
 
-[![Free trial](https://img.shields.io/badge/Free-7--day%20trial-22c55e)](https://get.dydb.in)
+[![Free trial](https://img.shields.io/badge/Free-7--day%20trial-22c55e)](https://dydb.in)
 [![Skills](https://img.shields.io/badge/Skills-19-5C4EE5)](#-the-skills)
 [![Built for](https://img.shields.io/badge/Built%20for-Claude%20Code-5C4EE5)](https://claude.com/claude-code)
 [![Works with](https://img.shields.io/badge/Works%20with-Jira%20·%20Confluence%20·%20GA4-0052CC)](#-what-it-connects-to)
 [![License](https://img.shields.io/badge/License-Commercial-blue)](#-license)
 
-[**Get started →**](https://get.dydb.in) · [How it works](#-how-it-works) · [The skills](#-the-skills) · [Why not just prompts?](#-why-skills-beat-prompts)
+[**Get started →**](https://dydb.in) · [How it works](#-how-it-works) · [The skills](#-the-skills) · [Why not just prompts?](#-why-skills-beat-prompts)
 
 </div>
 
@@ -45,7 +45,7 @@ claude
 #    /prd-generator   → turn an idea into a complete spec (and Jira tickets)
 ```
 
-**7 days free, then $49.** [Start the trial →](https://get.dydb.in)
+**7 days free, then $49.** [Start the trial →](https://dydb.in)
 
 ---
 
@@ -138,7 +138,7 @@ Nothing is hardcoded to any industry. A **B2B SaaS**, a **consumer app**, a **ma
 
 **7-day free trial, then $49.** One purchase, all 19 skills + updates.
 
-[**Start free → get.dydb.in**](https://get.dydb.in)
+[**Start free → dydb.in**](https://dydb.in)
 
 ---
 
@@ -148,7 +148,7 @@ Nothing is hardcoded to any industry. A **B2B SaaS**, a **consumer app**, a **ma
 
 **Where does my data go?** Credentials and team data stay on your machine. (A small, non-sensitive business summary — business type/industry — is sent to the maker for product analytics; opt out with `OPERATOR_TELEMETRY=off`.)
 
-**Jira or Linear?** Jira today; Linear is on the [roadmap](https://get.dydb.in).
+**Jira or Linear?** Jira today; Linear is on the [roadmap](https://dydb.in).
 
 **Can my whole team use it?** Yes — share the setup; each PM runs it in their own Claude Code.
 
@@ -156,14 +156,14 @@ Nothing is hardcoded to any industry. A **B2B SaaS**, a **consumer app**, a **ma
 
 ## 📜 License
 
-Commercial software. © AI-PM Operator. A 7-day free trial is included; continued use requires a license from [get.dydb.in](https://get.dydb.in). Not open-source; please don't redistribute the skills.
+Commercial software. © AI-PM Operator. A 7-day free trial is included; continued use requires a license from [dydb.in](https://dydb.in). Not open-source; please don't redistribute the skills.
 
 ## 📞 Questions?
 
-[Get it →](https://get.dydb.in) · [LinkedIn](https://www.linkedin.com/in/mohitkhandelwaliitm/)
+[Get it →](https://dydb.in) · [LinkedIn](https://www.linkedin.com/in/mohitkhandelwaliitm/)
 
 <div align="center">
 
-**Stop prompting. Start operating.** → [get.dydb.in](https://get.dydb.in)
+**Stop prompting. Start operating.** → [dydb.in](https://dydb.in)
 
 </div>
